@@ -35,3 +35,6 @@ next-env.d.ts
 
 # database
 db.json
+
+# scripts (may contain sensitive credentials)
+/scripts/
