@@ -1,101 +1,108 @@
-import fs from 'fs';
-import path from 'path';
-import { Database, User, Task } from '@/types';
+import { MongoClient, Db, Collection } from 'mongodb';
+import { User, Task } from '@/types';
 
-const DB_PATH = path.join(process.cwd(), 'db.json');
+const MONGO_URI = process.env.MONGO_URI || 'mongodb+srv://eecvibedash:Qcy7loiS42C5IPnf@cluster3.7mxgj4n.mongodb.net/taskflowpro?appName=Cluster3';
+const DB_NAME = 'taskflowpro';
 
-// Initialize database if it doesn't exist
-function initializeDB(): Database {
-  const initialData: Database = {
-    users: [],
-    tasks: [],
-  };
+let client: MongoClient | null = null;
+let db: Db | null = null;
 
-  if (!fs.existsSync(DB_PATH)) {
-    fs.writeFileSync(DB_PATH, JSON.stringify(initialData, null, 2));
-  }
-
-  return initialData;
-}
-
-// Read database
-export function readDB(): Database {
+// Connect to MongoDB
+export async function connectDB(): Promise<Db> {
+  if (db) return db;
+  
   try {
-    if (!fs.existsSync(DB_PATH)) {
-      return initializeDB();
-    }
-    const data = fs.readFileSync(DB_PATH, 'utf-8');
-    return JSON.parse(data);
+    client = new MongoClient(MONGO_URI);
+    await client.connect();
+    db = client.db(DB_NAME);
+    console.log('Connected to MongoDB');
+    return db;
   } catch (error) {
-    console.error('Error reading database:', error);
-    return initializeDB();
+    console.error('MongoDB connection error:', error);
+    throw new Error('Failed to connect to database');
   }
 }
 
-// Write database
-export function writeDB(data: Database): void {
+// Get collections
+export async function getUsersCollection(): Promise<Collection<User>> {
+  const database = await connectDB();
+  return database.collection<User>('users');
+}
+
+export async function getTasksCollection(): Promise<Collection<Task>> {
+  const database = await connectDB();
+  return database.collection<Task>('tasks');
+}
+
+// Initialize database with indexes and admin user
+export async function initializeDatabase(): Promise<void> {
   try {
-    fs.writeFileSync(DB_PATH, JSON.stringify(data, null, 2));
+    const usersCollection = await getUsersCollection();
+    const tasksCollection = await getTasksCollection();
+    
+    // Create indexes
+    await usersCollection.createIndex({ email: 1 }, { unique: true });
+    await usersCollection.createIndex({ id: 1 }, { unique: true });
+    await tasksCollection.createIndex({ id: 1 }, { unique: true });
+    await tasksCollection.createIndex({ userId: 1 });
+    
+    console.log('Database indexes created');
   } catch (error) {
-    console.error('Error writing database:', error);
-    throw new Error('Failed to write to database');
+    console.error('Database initialization error:', error);
   }
 }
 
 // User operations
-export function findUserByEmail(email: string): User | undefined {
-  const db = readDB();
-  return db.users.find((user) => user.email === email);
+export async function findUserByEmail(email: string): Promise<User | null> {
+  const collection = await getUsersCollection();
+  return collection.findOne({ email });
 }
 
-export function findUserById(id: string): User | undefined {
-  const db = readDB();
-  return db.users.find((user) => user.id === id);
+export async function findUserById(id: string): Promise<User | null> {
+  const collection = await getUsersCollection();
+  return collection.findOne({ id });
 }
 
-export function createUser(user: User): User {
-  const db = readDB();
-  db.users.push(user);
-  writeDB(db);
+export async function createUser(user: User): Promise<User> {
+  const collection = await getUsersCollection();
+  await collection.insertOne(user);
   return user;
 }
 
 // Task operations
-export function getTasksByUserId(userId: string): Task[] {
-  const db = readDB();
-  return db.tasks.filter((task) => task.userId === userId);
+export async function getTasksByUserId(userId: string): Promise<Task[]> {
+  const collection = await getTasksCollection();
+  return collection.find({ userId }).toArray();
 }
 
-export function getTaskById(id: string, userId: string): Task | undefined {
-  const db = readDB();
-  return db.tasks.find((task) => task.id === id && task.userId === userId);
+export async function getTaskById(id: string, userId: string): Promise<Task | null> {
+  const collection = await getTasksCollection();
+  return collection.findOne({ id, userId });
 }
 
-export function createTask(task: Task): Task {
-  const db = readDB();
-  db.tasks.push(task);
-  writeDB(db);
+export async function createTask(task: Task): Promise<Task> {
+  const collection = await getTasksCollection();
+  await collection.insertOne(task);
   return task;
 }
 
-export function updateTask(id: string, userId: string, updates: Partial<Task>): Task | null {
-  const db = readDB();
-  const taskIndex = db.tasks.findIndex((task) => task.id === id && task.userId === userId);
-  
-  if (taskIndex === -1) return null;
-  
-  db.tasks[taskIndex] = { ...db.tasks[taskIndex], ...updates, updatedAt: new Date().toISOString() };
-  writeDB(db);
-  return db.tasks[taskIndex];
+export async function updateTask(id: string, userId: string, updates: Partial<Task>): Promise<Task | null> {
+  const collection = await getTasksCollection();
+  const result = await collection.findOneAndUpdate(
+    { id, userId },
+    { 
+      $set: { 
+        ...updates, 
+        updatedAt: new Date().toISOString() 
+      } 
+    },
+    { returnDocument: 'after' }
+  );
+  return result;
 }
 
-export function deleteTask(id: string, userId: string): boolean {
-  const db = readDB();
-  const taskIndex = db.tasks.findIndex((task) => task.id === id && task.userId === userId);
-  
-  if (taskIndex === -1) return false;
-  
-  db.tasks.splice(taskIndex, 1);
-  writeDB(db);
-  return true;
+export async function deleteTask(id: string, userId: string): Promise<boolean> {
+  const collection = await getTasksCollection();
+  const result = await collection.deleteOne({ id, userId });
+  return result.deletedCount > 0;
 }

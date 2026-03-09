@@ -29,7 +29,7 @@ export async function GET(request: NextRequest) {
       );
     }
 
-    const tasks = getTasksByUserId(userId);
+    const tasks = await getTasksByUserId(userId);
     return NextResponse.json({ tasks });
   } catch (error) {
     console.error('Get tasks error:', error);
@@ -74,7 +74,7 @@ export async function POST(request: NextRequest) {
       tags: tags || [],
     };
 
-    const task = createTask(newTask);
+    const task = await createTask(newTask);
     return NextResponse.json({ task }, { status: 201 });
   } catch (error) {
     console.error('Create task error:', error);
@@ -107,7 +107,7 @@ export async function PUT(request: NextRequest) {
     }
 
     const body = await request.json();
-    const updatedTask = updateTask(taskId, userId, body);
+    const updatedTask = await updateTask(taskId, userId, body);
 
     if (!updatedTask) {
       return NextResponse.json(
@@ -147,7 +147,7 @@ export async function DELETE(request: NextRequest) {
       );
     }
 
-    const success = deleteTask(taskId, userId);
+    const success = await deleteTask(taskId, userId);
 
     if (!success) {
       return NextResponse.json(

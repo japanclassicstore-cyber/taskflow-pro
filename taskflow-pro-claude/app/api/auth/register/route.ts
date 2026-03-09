@@ -25,7 +25,7 @@ export async function POST(request: NextRequest) {
     }
 
     // Check if user exists
-    const existingUser = findUserByEmail(email);
+    const existingUser = await findUserByEmail(email);
     if (existingUser) {
       return NextResponse.json(
         { error: 'User already exists' },
@@ -43,7 +43,7 @@ export async function POST(request: NextRequest) {
       createdAt: new Date().toISOString(),
     };
 
-    createUser(newUser);
+    await createUser(newUser);
 
     // Generate token
     const token = generateToken(newUser.id);
